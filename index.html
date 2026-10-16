@@ -149,6 +149,14 @@
     text-transform: none;
     cursor: pointer;
   }
+  .sustain-field.disabled{ opacity: 0.4; }
+  .sustain-field.disabled input, .sustain-field.disabled label{ cursor: not-allowed; }
+  .grid-info{
+    font-size: 0.72rem;
+    color: var(--sage);
+    letter-spacing: 0.04em;
+    padding-bottom: 6px;
+  }
 
   .btn{
     background: transparent;
@@ -300,11 +308,80 @@
   .field input[type=range]{
     width: 130px;
   }
+  /* bigger handle on the main scrubber */
+  #scrubber{ height: 10px; margin: 10px 0; }
+  #scrubber::-webkit-slider-thumb{ width: 30px; height: 38px; margin-top: -14px; border-radius: 5px; }
+  #scrubber::-moz-range-thumb{ width: 30px; height: 38px; border-radius: 5px; }
+  #scrubber::-moz-range-track{ height: 10px; }
   .vol-value{
     color: var(--brass-bright);
     font-weight: bold;
     letter-spacing: 0;
     text-transform: none;
+  }
+
+  /* ---- play order strip ---- */
+  .order-wrap{
+    width:100%;
+    max-width: 900px;
+    margin-top: 10px;
+  }
+  .order-strip{
+    display:flex;
+    gap: 1px;
+    height: 42px;
+    padding: 2px;
+    border-radius: 5px;
+    background: rgba(0,0,0,0.3);
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+    touch-action: none;
+    user-select: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .order-strip.drop-target{ box-shadow: 0 0 0 2px var(--brass-bright), inset 0 2px 4px rgba(0,0,0,0.5); }
+  .order-tile{
+    flex: 1 1 0;
+    min-width: 6px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+    border-radius: 3px;
+    cursor: grab;
+    font-size: 9px;
+    letter-spacing: 0.02em;
+  }
+  .order-tile span{ writing-mode: vertical-rl; white-space: nowrap; pointer-events:none; }
+  .order-tile.white{ background: var(--ivory); color: #5a4a33; }
+  .order-tile.black{ background: var(--ebony); color: var(--text-dim); border: 1px solid #000; }
+  .order-tile.active{ background: var(--brass-bright); color: var(--ebony); }
+  .order-tile.dragging{ background: var(--brass); color: var(--ebony); cursor: grabbing; outline: 2px solid var(--brass-bright); }
+  .order-empty{
+    flex:1;
+    display:flex; align-items:center; justify-content:center;
+    font-size: 0.7rem; color: var(--text-dim); font-style: italic;
+  }
+  .drag-ghost{
+    position: fixed;
+    pointer-events: none;
+    z-index: 100;
+    transform: translate(-50%, -140%);
+    background: var(--brass-bright);
+    color: var(--ebony);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  }
+  body.reordering, body.reordering *{ cursor: grabbing !important; }
+  .order-controls{
+    display:flex;
+    gap: 8px;
+    align-items:flex-end;
+    justify-content:center;
+    flex-wrap: wrap;
+    margin-top: 8px;
   }
 
   .toolbar{
@@ -337,9 +414,27 @@
     <div class="keyboard" id="keyboard"></div>
   </div>
 
+  <div class="order-wrap">
+    <div class="slider-track-label"><span>Play Order</span><span style="text-transform:none; letter-spacing:0.02em;">drag tiles (or drag a key down here) to rearrange</span></div>
+    <div class="order-strip" id="orderStrip"></div>
+    <div class="order-controls">
+      <div class="field">
+        <label for="orderSelect">Ordering</label>
+        <select id="orderSelect"></select>
+      </div>
+      <button id="randomizeOrderBtn" class="btn">Randomize</button>
+      <button id="resetOrderBtn" class="btn">Reset Order</button>
+    </div>
+  </div>
+
   <div class="slider-wrap">
-    <div class="slider-track-label"><span>A0</span><span>SCRUB</span><span>C8</span></div>
+    <div class="slider-track-label"><span id="orderFirstLabel">A0</span><span>SCRUB</span><span id="orderLastLabel">C8</span></div>
     <input type="range" id="scrubber" min="0" max="10000" step="1" value="0">
+    <div class="order-controls">
+      <button id="lowestRootBtn" class="btn">Go to Lowest Root</button>
+      <button id="autoScrubBtn" class="btn">Auto Scrub</button>
+      <span class="grid-info" id="scrubStatus" style="padding-bottom:0;"></span>
+    </div>
   </div>
 
   <div class="toolbar">
@@ -360,41 +455,50 @@
   </div>
 
   <div class="panel">
-    <div class="field">
-      <label for="scaleSelect">Scale / Arpeggio</label>
-      <select id="scaleSelect"></select>
+    <div class="panel-sub">
+      <div class="field">
+        <label for="scaleSelect">Scale / Arpeggio</label>
+        <select id="scaleSelect"></select>
+      </div>
+      <div class="field">
+        <label for="keySelect">Key (Scale)</label>
+        <select id="keySelect"></select>
+      </div>
+      <div class="field">
+        <label for="instrumentSelect">Instrument</label>
+        <select id="instrumentSelect"></select>
+      </div>
+      <div class="field sustain-field" id="sustainField">
+        <input type="checkbox" id="sustainToggle">
+        <label for="sustainToggle">Sustain held note</label>
+      </div>
+      <div class="field sustain-field" id="slurField">
+        <input type="checkbox" id="slurToggle">
+        <label for="slurToggle">Slur (pitch glide)</label>
+      </div>
+      <div class="field sustain-field">
+        <input type="checkbox" id="reverseEnvToggle">
+        <label for="reverseEnvToggle">Reverse Envelope</label>
+      </div>
+      <div class="field save-field" style="flex-direction:row; gap:8px;">
+        <button id="savePresetBtn" class="btn">Save Preset</button>
+        <button id="deletePresetBtn" class="btn danger hidden">Delete Preset</button>
+      </div>
     </div>
-    <div class="field">
-      <label for="keySelect">Key (Scale)</label>
-      <select id="keySelect"></select>
-    </div>
-    <div class="field">
-      <label for="instrumentSelect">Instrument</label>
-      <select id="instrumentSelect"></select>
-    </div>
-    <div class="field sustain-field">
-      <input type="checkbox" id="sustainToggle">
-      <label for="sustainToggle">Sustain held note</label>
-    </div>
-    <div class="field sustain-field">
-      <input type="checkbox" id="slurToggle">
-      <label for="slurToggle">Slur (pitch glide)</label>
-    </div>
-    <div class="field sustain-field">
-      <input type="checkbox" id="quantizeToggle">
-      <label for="quantizeToggle">Quantize Notes</label>
-    </div>
-    <div class="field sustain-field">
-      <input type="checkbox" id="reverseEnvToggle">
-      <label for="reverseEnvToggle">Reverse Envelope</label>
-    </div>
-    <div class="field">
-      <label for="noteLengthSelect">Note Length</label>
-      <select id="noteLengthSelect"></select>
-    </div>
-    <div class="field save-field" style="flex-direction:row; gap:8px;">
-      <button id="savePresetBtn" class="btn">Save Preset</button>
-      <button id="deletePresetBtn" class="btn danger hidden">Delete Preset</button>
+
+    <div class="divider" style="width:100%; height:1px; margin:4px 0;"></div>
+
+    <div class="panel-title" style="border-bottom:none; padding-bottom:0;">Quantize</div>
+    <div class="panel-sub">
+      <div class="field sustain-field">
+        <input type="checkbox" id="quantizeToggle">
+        <label for="quantizeToggle">Quantize Notes</label>
+      </div>
+      <div class="field">
+        <label for="noteLengthSelect">Note Length</label>
+        <select id="noteLengthSelect"></select>
+      </div>
+      <div class="grid-info" id="quantizeGridInfo"></div>
     </div>
   </div>
 
@@ -485,7 +589,7 @@
     </div>
   </div>
 
-  <div class="hint">Pick a scale/key to auto-check matching notes, then scrub. The drone chord has its own key, so you can scrub a scale over a chord in a different key on purpose. The progression follows the scale's Key. Flip on Enable Beat for basic drums under the progression. Slur glides pitch continuously between notes instead of jumping (turns off Sustain, since they conflict). Quantize snaps normal scrubbed notes onto a rhythmic grid — set by Note Length and the Tempo field — instead of firing exactly when you cross a key. Reverse Envelope swells each keyboard note up to full volume and cuts it off, instead of the normal pluck-and-decay. Delay only affects the keyboard channel.</div>
+  <div class="hint">Pick a scale/key to auto-check matching notes, then scrub. The drone chord has its own key, so you can scrub a scale over a chord in a different key on purpose. The progression follows the scale's Key. Flip on Enable Beat for basic drums under the progression. Auto Scrub sweeps the slider one note per Note Length at the Tempo, bouncing back at each end; Go to Lowest Root jumps to the lowest unmuted note of the Key. Drag the Play Order tiles to change which note each spot on the slider plays, or pick a pattern from Ordering. The Barry Harris Chromatic orderings follow the Scale/Key (Major if none is picked): unmuted non-scale keys become chromatic passing tones, and where none is available the scale tone above is added (so a note can appear twice) to keep scale tones on the beat. Slur glides pitch continuously between notes instead of jumping (turns off Sustain, since they conflict). Quantize snaps scrubbed notes onto a rhythmic grid — set by Note Length and the Tempo field — instead of firing exactly when you cross a key; Sustain and Slur are locked off while it's on. Reverse Envelope swells each keyboard note up to full volume and cuts it off, instead of the normal pluck-and-decay. Delay only affects the keyboard channel.</div>
 </div>
 
 <script>
@@ -737,6 +841,13 @@
     const unmutedMidis = presets[name];
     if(!unmutedMidis) return;
     const set = new Set(unmutedMidis);
+    // presets saved out of pitch order carry a custom play order
+    const isRearranged = unmutedMidis.some((m,i)=> i > 0 && m <= unmutedMidis[i-1]);
+    if(isRearranged){
+      orderMode = 'custom';
+      customOrder = unmutedMidis.slice();
+      orderSelect.value = 'custom';
+    }
     setMuteState(k => set.has(k.midi));
   }
   document.getElementById('savePresetBtn').addEventListener('click', ()=>{
@@ -745,7 +856,7 @@
     const trimmed = name.trim();
     if(!trimmed) return;
     const presets = loadPresets();
-    presets[trimmed] = keys.filter(k=>!k.muted).map(k=>k.midi);
+    presets[trimmed] = thresholdList.map(k=>k.midi); // saved in play order
     savePresets(presets);
     refreshCustomOptions();
     scaleSelect.value = 'custom:' + trimmed;
@@ -1029,9 +1140,16 @@
     };
   }
 
-  function flash(k){
+  // lights a key and its play-order tile(s); pass a slot to light just that slot's tile
+  function flash(item){
+    const k = item.key || item;
+    const tiles = item.key ? [item.tileEl] : thresholdList.filter(s=>s.key===k).map(s=>s.tileEl);
     k.el.classList.add('active');
-    setTimeout(()=> k.el.classList.remove('active'), 160);
+    tiles.forEach(t => t && t.classList.add('active'));
+    setTimeout(()=>{
+      k.el.classList.remove('active');
+      tiles.forEach(t => t && t.classList.remove('active'));
+    }, 160);
   }
 
   // glide voice: like a sustain voice, but its pitch can be smoothly retargeted
@@ -1085,14 +1203,280 @@
 
   // ================= NORMALIZED SCRUBBING =================
   const SLIDER_MAX = 10000;
-  let lastValue = 0;
+  let lastValue = -1; // just below the first spot, so the first drag plays the lowest note
   let thresholdList = [];
 
-  function recomputeThresholds(){
+  // ================= PLAY ORDER =================
+  // the order active keys are laid out along the slider. Each spot is a "slot"
+  // {key, midi, name, threshold, tileEl}; a key can fill more than one slot.
+  // Pattern orderings are recomputed from whatever keys are active; 'custom'
+  // keeps a hand-arranged list.
+  function chunked(a, size, flip){
+    const out = [];
+    for(let i=0;i<a.length;i+=size){
+      const c = a.slice(i, i+size);
+      out.push(...(flip(i/size) ? c.reverse() : c));
+    }
+    return out;
+  }
+  function shuffled(a){
+    const out = a.slice();
+    for(let i=out.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+  }
+  function outsideIn(a){
+    const out = [];
+    let i = 0, j = a.length-1;
+    while(i <= j){ out.push(a[i++]); if(i <= j) out.push(a[j--]); }
+    return out;
+  }
+
+  // Barry Harris chromatic scale: walk the scale (from Scale/Key, Major if none)
+  // with chromatic passing tones between scale tones so every scale tone lands
+  // on a beat. Where there's no passing tone to fill the off-beat, approach the
+  // target from the scale tone above it (E-[G]-F, B-[D]-C). Only active keys
+  // count as available passing tones, so with just scale tones unmuted every
+  // step gets the upper-neighbor approach.
+  function barryHarrisChromatic(active, withDescent){
+    const root = Number(keySelect.value);
+    const sel = SCALE_MAP[scaleSelect.value];
+    const intervals = (sel && sel.intervals.length >= 5 && sel.intervals.length < 12) ? sel.intervals : SCALE_MAP.major.intervals;
+    const pcs = new Set(intervals.map(iv => (root + iv) % 12));
+    const scaleTones = active.filter(k => pcs.has(k.pc));
+    if(scaleTones.length < 2) return active;
+    const passingBetween = (lo, hi) => active.filter(k => !pcs.has(k.pc) && k.midi > lo.midi && k.midi < hi.midi);
+
+    const out = [scaleTones[0]];
+    for(let i=1;i<scaleTones.length;i++){
+      const passing = passingBetween(scaleTones[i-1], scaleTones[i]);
+      out.push(...passing);
+      // an odd number of in-between notes keeps the next scale tone on the beat
+      if(passing.length % 2 === 0 && scaleTones[i+1]) out.push(scaleTones[i+1]);
+      out.push(scaleTones[i]);
+    }
+    if(!withDescent) return out;
+    for(let i=scaleTones.length-1;i>0;i--){
+      const passing = passingBetween(scaleTones[i-1], scaleTones[i]).reverse();
+      out.push(...passing);
+      if(passing.length % 2 === 0 && scaleTones[i+1]) out.push(scaleTones[i+1]);
+      out.push(scaleTones[i-1]);
+    }
+    return out;
+  }
+
+  const ORDERINGS = {
+    natural:     { label:'Low → High (Normal)',        fn: a => a },
+    descending:  { label:'High → Low',                 fn: a => a.slice().reverse() },
+    outsideIn:   { label:'Outside In (Low/High Alternating)', fn: outsideIn },
+    insideOut:   { label:'Inside Out (Spiral from Center)', fn: a => outsideIn(a).reverse() },
+    mountain:    { label:'Mountain (Up Odds, Down Evens)',  fn: a => a.filter((_,i)=>i%2===0).concat(a.filter((_,i)=>i%2===1).reverse()) },
+    skipFill:    { label:'Skip & Fill (Every Other, Twice)', fn: a => a.filter((_,i)=>i%2===0).concat(a.filter((_,i)=>i%2===1)) },
+    zigzag:      { label:'Zigzag Pairs',                    fn: a => chunked(a, 2, ()=>true) },
+    cascade:     { label:'Cascading Triplets',              fn: a => chunked(a, 3, ()=>true) },
+    wave:        { label:'Wave (4 Up, 4 Down)',             fn: a => chunked(a, 4, n=>n%2===1) },
+    noteName:    { label:'Grouped by Note Name',            fn: a => a.slice().sort((x,y)=> x.pc - y.pc || x.midi - y.midi) },
+    fifths:      { label:'Circle of Fifths',                fn: a => a.slice().sort((x,y)=> (x.pc*7)%12 - (y.pc*7)%12 || x.midi - y.midi) },
+    barry:       { label:'Barry Harris Chromatic (Up)',     followsScale:true, fn: a => barryHarrisChromatic(a, false) },
+    barryUpDown: { label:'Barry Harris Chromatic (Up & Down)', followsScale:true, fn: a => barryHarrisChromatic(a, true) },
+    octaveShuffle:{ label:'Shuffle Within Each Octave',     random:true, fn: a => {
+        const byOct = {};
+        a.forEach(k=>{ const o = Math.floor(k.midi/12); (byOct[o] = byOct[o] || []).push(k); });
+        return Object.keys(byOct).sort((x,y)=>x-y).flatMap(o => shuffled(byOct[o]));
+      } },
+    custom:      { label:'Custom (Hand-Arranged)' },
+  };
+  let orderMode = 'natural';
+  let customOrder = []; // midis (repeats allowed); may include muted keys so they keep their spot
+
+  const orderSelect = document.getElementById('orderSelect');
+  Object.keys(ORDERINGS).forEach(key=>{
+    const opt = document.createElement('option');
+    opt.value = key; opt.textContent = ORDERINGS[key].label;
+    orderSelect.appendChild(opt);
+  });
+  orderSelect.value = orderMode;
+
+  // returns active keys in play order; a key may appear more than once
+  function orderedActiveKeys(){
     const active = keys.filter(k=>!k.muted);
-    const n = active.length;
-    active.forEach((k, i)=>{ k.threshold = n === 1 ? SLIDER_MAX/2 : (i/(n-1)) * SLIDER_MAX; });
-    thresholdList = active.slice().sort((a,b)=>a.threshold - b.threshold);
+    if(orderMode !== 'custom') return ORDERINGS[orderMode].fn(active);
+    // newly unmuted keys slot in right after their nearest lower-pitched neighbor
+    const known = new Set(customOrder);
+    active.forEach(k=>{
+      if(known.has(k.midi)) return;
+      let idx = -1, best = -Infinity;
+      customOrder.forEach((m,i)=>{ if(m < k.midi && m > best){ best = m; idx = i; } });
+      customOrder.splice(idx+1, 0, k.midi);
+      known.add(k.midi);
+    });
+    const byMidi = new Map(active.map(k=>[k.midi, k]));
+    return customOrder.filter(m=>byMidi.has(m)).map(m=>byMidi.get(m));
+  }
+  function setCustomOrder(midis){
+    orderMode = 'custom';
+    customOrder = midis.slice();
+    orderSelect.value = 'custom';
+    recomputeThresholds();
+  }
+  function applyOrdering(mode){
+    const def = ORDERINGS[mode] || ORDERINGS.natural;
+    if(mode === 'custom'){
+      setCustomOrder(thresholdList.map(s=>s.midi));
+    } else if(def.random){
+      // random patterns get frozen into a custom order so they don't reshuffle on every mute toggle
+      setCustomOrder(def.fn(keys.filter(k=>!k.muted)).map(k=>k.midi));
+    } else {
+      orderMode = mode;
+      orderSelect.value = mode;
+      recomputeThresholds();
+    }
+  }
+  orderSelect.addEventListener('change', ()=> applyOrdering(orderSelect.value));
+  document.getElementById('resetOrderBtn').addEventListener('click', ()=> applyOrdering('natural'));
+  document.getElementById('randomizeOrderBtn').addEventListener('click', ()=>{
+    setCustomOrder(shuffled(thresholdList).map(s=>s.midi));
+  });
+  // the Barry Harris orderings depend on Scale/Key even when no keys get re-muted
+  [scaleSelect, keySelect].forEach(sel => sel.addEventListener('change', ()=>{
+    if(ORDERINGS[orderMode].followsScale) recomputeThresholds();
+  }));
+
+  // ---- order strip ----
+  const orderStrip = document.getElementById('orderStrip');
+  const orderFirstLabel = document.getElementById('orderFirstLabel');
+  const orderLastLabel = document.getElementById('orderLastLabel');
+  const tilePool = new Map(); // "midi:occurrence" -> tile element, reused across renders
+  function tileFor(k, occurrence){
+    const poolKey = k.midi + ':' + occurrence;
+    let tile = tilePool.get(poolKey);
+    if(!tile){
+      tile = document.createElement('div');
+      tile.className = 'order-tile ' + (k.isWhite ? 'white' : 'black');
+      tile.title = k.name;
+      const span = document.createElement('span');
+      span.textContent = k.name;
+      tile.appendChild(span);
+      tile.addEventListener('pointerdown', e => beginReorderDrag(e, 'tile', tile.slotIndex));
+      tilePool.set(poolKey, tile);
+    }
+    return tile;
+  }
+  const orderEmptyEl = document.createElement('div');
+  orderEmptyEl.className = 'order-empty';
+  orderEmptyEl.textContent = 'All keys are muted';
+
+  function renderOrderStrip(){
+    if(thresholdList.length === 0){
+      orderStrip.replaceChildren(orderEmptyEl);
+      orderFirstLabel.textContent = orderLastLabel.textContent = '—';
+      return;
+    }
+    const seen = new Map();
+    thresholdList.forEach((s, i)=>{
+      const occ = seen.get(s.midi) || 0;
+      seen.set(s.midi, occ + 1);
+      s.tileEl = tileFor(s.key, occ);
+      s.tileEl.slotIndex = i;
+      s.tileEl.classList.toggle('dragging', !!(reorderDrag && reorderDrag.moved && reorderDrag.index === i));
+    });
+    orderStrip.replaceChildren(...thresholdList.map(s=>s.tileEl));
+    orderFirstLabel.textContent = thresholdList[0].name;
+    orderLastLabel.textContent = thresholdList[thresholdList.length-1].name;
+  }
+
+  // ---- drag & drop (pointer events, so it works with mouse and touch) ----
+  // source 'tile': dragging a slot within the strip.
+  // source 'key': dragging a piano key down onto the strip (moves that key's first slot).
+  let reorderDrag = null;
+  let suppressKeyClick = false;
+  let dragGhost = null;
+  function beginReorderDrag(e, source, index){
+    if(e.pointerType === 'mouse' && e.button !== 0) return;
+    if(index == null || index < 0 || !thresholdList[index]) return;
+    if(source === 'tile') e.preventDefault();
+    reorderDrag = { index, source, startX:e.clientX, startY:e.clientY, moved:false };
+    window.addEventListener('pointermove', onReorderMove);
+    window.addEventListener('pointerup', endReorderDrag);
+    window.addEventListener('pointercancel', endReorderDrag);
+  }
+  function onReorderMove(e){
+    const d = reorderDrag;
+    if(!d) return;
+    const slot = thresholdList[d.index];
+    if(!d.moved){
+      if(Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 5) return;
+      d.moved = true;
+      slot.tileEl.classList.add('dragging');
+      document.body.classList.add('reordering');
+      dragGhost = document.createElement('div');
+      dragGhost.className = 'drag-ghost';
+      dragGhost.textContent = slot.name;
+      document.body.appendChild(dragGhost);
+    }
+    e.preventDefault();
+    dragGhost.style.left = e.clientX + 'px';
+    dragGhost.style.top = e.clientY + 'px';
+
+    const rect = orderStrip.getBoundingClientRect();
+    const overStrip = d.source === 'tile' || (e.clientY >= rect.top - 24 && e.clientY <= rect.bottom + 24);
+    orderStrip.classList.toggle('drop-target', d.source === 'key' && overStrip);
+    if(!overStrip) return;
+
+    // long orders overflow the strip; nudge the scroll when dragging near an edge
+    if(e.clientX < rect.left + 20) orderStrip.scrollLeft -= 12;
+    else if(e.clientX > rect.right - 20) orderStrip.scrollLeft += 12;
+
+    const n = thresholdList.length;
+    const x = e.clientX - rect.left + orderStrip.scrollLeft;
+    const idx = Math.max(0, Math.min(n-1, Math.floor(x / orderStrip.scrollWidth * n)));
+    if(idx === d.index) return;
+    const midis = thresholdList.map(s=>s.midi);
+    const [moved] = midis.splice(d.index, 1);
+    midis.splice(idx, 0, moved);
+    d.index = idx;
+    setCustomOrder(midis);
+  }
+  function endReorderDrag(){
+    const d = reorderDrag;
+    reorderDrag = null;
+    window.removeEventListener('pointermove', onReorderMove);
+    window.removeEventListener('pointerup', endReorderDrag);
+    window.removeEventListener('pointercancel', endReorderDrag);
+    if(!d) return;
+    const slot = thresholdList[d.index];
+    if(slot) slot.tileEl.classList.remove('dragging');
+    orderStrip.classList.remove('drop-target');
+    document.body.classList.remove('reordering');
+    if(dragGhost){ dragGhost.remove(); dragGhost = null; }
+    if(d.moved){
+      if(d.source === 'key'){
+        // the browser fires a click after this pointerup; don't let it play the note
+        suppressKeyClick = true;
+        setTimeout(()=>{ suppressKeyClick = false; }, 0);
+      }
+    } else if(d.source === 'tile' && slot){
+      // a tap on a tile auditions the note
+      ensureAudio();
+      document.getElementById('enableAudio').classList.add('hidden');
+      pluck(slot.midi, 0.9);
+      flash(slot);
+    }
+  }
+  keys.forEach(k=>{
+    k.el.addEventListener('pointerdown', e => beginReorderDrag(e, 'key', thresholdList.findIndex(s=>s.key===k)));
+  });
+
+  function recomputeThresholds(){
+    const ordered = orderedActiveKeys();
+    const n = ordered.length;
+    thresholdList = ordered.map((k, i)=>({
+      key: k, midi: k.midi, name: k.name, tileEl: null,
+      threshold: n === 1 ? SLIDER_MAX/2 : (i/(n-1)) * SLIDER_MAX
+    }));
+    renderOrderStrip();
   }
   recomputeThresholds();
 
@@ -1178,10 +1562,11 @@
   });
 
   const scrubber = document.getElementById('scrubber');
-  scrubber.addEventListener('input', (e)=>{
+  // plays whatever moving the scrubber from lastValue to val should sound.
+  // Shared by hand-scrubbing and auto-scrub (which passes fractional values).
+  function scrubTo(val){
     ensureAudio();
     document.getElementById('enableAudio').classList.add('hidden');
-    const val = Number(e.target.value);
 
     if(slurToggle.checked){
       // continuous pitch glide: one voice, its frequency chases the slider
@@ -1201,14 +1586,17 @@
         flash(zoneKey);
       }
     } else {
-      const lo = Math.min(lastValue, val);
-      const hi = Math.max(lastValue, val);
+      // a note sounds when the scrubber lands on or passes it, but not again
+      // when the scrubber moves off a note it was already sitting on
       const dir = val >= lastValue ? 1 : -1;
-      const crossed = thresholdList.filter(k => k.threshold >= lo && k.threshold <= hi);
+      const crossed = thresholdList.filter(k => dir > 0
+        ? k.threshold > lastValue && k.threshold <= val
+        : k.threshold >= val && k.threshold < lastValue);
       if(dir < 0) crossed.reverse();
       crossed.forEach(k=>{
         if(quantizeToggle.checked){
-          const when = nextGridTime();
+          // auto-scrub already moves on the grid, so its notes play right away
+          const when = autoScrub ? audioCtx.currentTime : nextGridTime();
           const dur = quantizeGridSeconds() * 0.92;
           pluck(k.midi, 0.85, { when, duration: dur });
           const delayMs = Math.max(0, (when - audioCtx.currentTime) * 1000);
@@ -1220,13 +1608,89 @@
       });
     }
     lastValue = val;
-  });
+  }
+  scrubber.addEventListener('input', ()=> scrubTo(Number(scrubber.value)));
   scrubber.addEventListener('change', ()=>{ releaseScrubSustain(); releaseGlide(); });
   scrubber.addEventListener('mouseup', ()=>{ releaseScrubSustain(); releaseGlide(); });
   scrubber.addEventListener('touchend', ()=>{ releaseScrubSustain(); releaseGlide(); });
+  // grabbing the scrubber by hand takes over from auto-scrub
+  scrubber.addEventListener('pointerdown', ()=>{ if(autoScrub) stopAutoScrub(); });
+
+  // ---- jump to lowest root ----
+  document.getElementById('lowestRootBtn').addEventListener('click', ()=>{
+    const rootPc = Number(keySelect.value);
+    let target = null;
+    thresholdList.forEach(s=>{ if(s.key.pc === rootPc && (!target || s.midi < target.midi)) target = s; });
+    if(!target){
+      scrubStatus.textContent = 'No ' + NOTE_NAMES[rootPc] + ' is unmuted';
+      setTimeout(()=>{ scrubStatus.textContent = ''; }, 2000);
+      return;
+    }
+    ensureAudio();
+    document.getElementById('enableAudio').classList.add('hidden');
+    releaseScrubSustain();
+    releaseGlide();
+    lastValue = target.threshold;
+    scrubber.value = Math.round(target.threshold);
+    if(autoScrub) autoScrub.phase = thresholdList.indexOf(target); // carry on upward from the root
+    pluck(target.midi, 0.85);
+    flash(target);
+  });
+
+  // ---- auto-scrub ----
+  // sweeps the scrubber one play-order spot per Note Length at the Tempo,
+  // bouncing back at each end. phase counts spots travelled along an unfolded
+  // up-down-up path; folding it gives the current spot index.
+  const autoScrubBtn = document.getElementById('autoScrubBtn');
+  const scrubStatus = document.getElementById('scrubStatus');
+  let autoScrub = null; // { phase, lastTime, rafId }
+  function foldPhase(phase, span){
+    const cycle = 2 * span;
+    const p = ((phase % cycle) + cycle) % cycle;
+    return p <= span ? p : cycle - p;
+  }
+  function autoScrubFrame(now){
+    const a = autoScrub;
+    if(!a) return;
+    const span = thresholdList.length - 1;
+    if(span < 1){ a.lastTime = now; a.rafId = requestAnimationFrame(autoScrubFrame); return; }
+    const dt = Math.min(0.25, (now - a.lastTime) / 1000); // don't leap after the tab was hidden
+    a.lastTime = now;
+    const prevPhase = a.phase;
+    a.phase += dt / quantizeGridSeconds();
+    // land exactly on an end note before turning around, so it isn't skipped
+    const turn = Math.floor(a.phase / span);
+    if(turn !== Math.floor(prevPhase / span)) scrubTo(foldPhase(turn * span, span) / span * SLIDER_MAX);
+    const val = foldPhase(a.phase, span) / span * SLIDER_MAX;
+    scrubTo(val);
+    scrubber.value = Math.round(val);
+    a.rafId = requestAnimationFrame(autoScrubFrame);
+  }
+  function startAutoScrub(){
+    ensureAudio();
+    document.getElementById('enableAudio').classList.add('hidden');
+    const span = Math.max(1, thresholdList.length - 1);
+    // start from where the scrubber is, heading up (or down if it's already at the top)
+    const startPhase = Number(scrubber.value) / SLIDER_MAX * span;
+    autoScrub = { phase: startPhase, lastTime: performance.now(), rafId: 0 };
+    lastValue = Number(scrubber.value);
+    autoScrub.rafId = requestAnimationFrame(autoScrubFrame);
+    autoScrubBtn.textContent = 'Stop Auto Scrub';
+    autoScrubBtn.classList.add('playing');
+  }
+  function stopAutoScrub(){
+    if(autoScrub) cancelAnimationFrame(autoScrub.rafId);
+    autoScrub = null;
+    releaseScrubSustain();
+    releaseGlide();
+    autoScrubBtn.textContent = 'Auto Scrub';
+    autoScrubBtn.classList.remove('playing');
+  }
+  autoScrubBtn.addEventListener('click', ()=>{ autoScrub ? stopAutoScrub() : startAutoScrub(); });
 
   keys.forEach(k=>{
     k.el.addEventListener('click', ()=>{
+      if(suppressKeyClick) return;
       ensureAudio();
       document.getElementById('enableAudio').classList.add('hidden');
       if(!k.muted){ pluck(k.midi, 0.9); flash(k); }
@@ -1497,6 +1961,31 @@
     scheduleBar();
   }
   progBtn.addEventListener('click', ()=>{ progressionPlaying ? stopProgression() : startProgression(); });
+
+  // ================= QUANTIZE LOCKOUT =================
+  // quantized notes are scheduled one-shots, so sustain and slur don't apply while it's on
+  const quantizeGridInfo = document.getElementById('quantizeGridInfo');
+  function updateQuantizeGridInfo(){
+    const bpm = Math.max(20, Number(tempoInput.value) || 100);
+    const ms = Math.round(quantizeGridSeconds() * 1000);
+    quantizeGridInfo.textContent = NOTE_LENGTH_LABELS[noteLengthSelect.value] + ' @ ' + bpm + ' BPM = ' + ms + ' ms grid';
+  }
+  function syncQuantizeLock(){
+    const locked = quantizeToggle.checked;
+    [[sustainToggle, 'sustainField'], [slurToggle, 'slurField']].forEach(([cb, fieldId])=>{
+      if(locked) cb.checked = false;
+      cb.disabled = locked;
+      const field = document.getElementById(fieldId);
+      field.classList.toggle('disabled', locked);
+      field.title = locked ? 'Turn off Quantize to use this' : '';
+    });
+    if(locked){ releaseScrubSustain(); releaseGlide(); }
+  }
+  quantizeToggle.addEventListener('change', syncQuantizeLock);
+  noteLengthSelect.addEventListener('change', updateQuantizeGridInfo);
+  tempoInput.addEventListener('input', updateQuantizeGridInfo);
+  syncQuantizeLock();
+  updateQuantizeGridInfo();
 })();
 </script>
 </body>
